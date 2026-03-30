@@ -1,5 +1,5 @@
 # Todo API
-
+## README сделан с помощью ИИ
 REST API для управления задачами на Go с PostgreSQL.
 
 ## Быстрый старт
