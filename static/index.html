@@ -3,68 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Todo List</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <title>Система управления курсовыми работами</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=2">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>📝 Todo List</h1>
-            <p class="subtitle">Управляй своими задачами</p>
-        </header>
-
-        <section class="add-todo">
-            <form id="todoForm">
-                <input type="text" id="title" placeholder="Название задачи" required>
-                <input type="text" id="description" placeholder="Описание (необязательно)">
-                <button type="submit">Добавить</button>
-            </form>
-        </section>
-
-        <section class="stats">
-            <div class="stat">
-                <span id="totalCount">0</span>
-                <label>Всего</label>
-            </div>
-            <div class="stat">
-                <span id="completedCount">0</span>
-                <label>Выполнено</label>
-            </div>
-            <div class="stat">
-                <span id="pendingCount">0</span>
-                <label>В процессе</label>
-            </div>
-        </section>
-
-        <section class="filters">
-            <button class="filter-btn active" data-filter="all">Все</button>
-            <button class="filter-btn" data-filter="pending">В процессе</button>
-            <button class="filter-btn" data-filter="completed">Выполнено</button>
-        </section>
-
-        <section class="todo-list" id="todoList">
-            <div class="loading">Загрузка...</div>
-        </section>
-    </div>
-
-    <!-- Модальное окно для редактирования -->
-    <div id="editModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h2>Редактировать задачу</h2>
-            <form id="editForm">
-                <input type="hidden" id="editId">
-                <input type="text" id="editTitle" placeholder="Название" required>
-                <input type="text" id="editDescription" placeholder="Описание">
-                <label class="checkbox-label">
-                    <input type="checkbox" id="editCompleted">
-                    Выполнено
-                </label>
-                <button type="submit">Сохранить</button>
-            </form>
+    <nav id="mainNav" class="hidden">
+        <div class="nav-brand">📚 Курсовые работы</div>
+        <div class="nav-links">
+            <a href="#dashboard">Главная</a>
+            <a href="#theses" id="navTheses">Курсовые</a>
+            <a href="#groups" id="navGroups" class="admin-only teacher-only">Группы</a>
+            <a href="#users" id="navUsers" class="admin-only teacher-only">Пользователи</a>
+            <a href="#notifications" id="navNotifications">🔔 <span id="notifBadge" class="badge hidden">0</span></a>
+            <a href="#profile" id="navProfile">Профиль</a>
+            <a href="#" id="logoutBtn">Выйти</a>
         </div>
-    </div>
+    </nav>
 
-    <script src="/static/js/app.js"></script>
+    <main id="app"></main>
+
+    <script src="/static/js/app.js?v=2"></script>
+    <script src="/static/js/auth.js?v=2"></script>
+    <script src="/static/js/dashboard.js?v=2"></script>
+    <script src="/static/js/groups.js?v=2"></script>
+    <script src="/static/js/thesis.js?v=2"></script>
+    <script src="/static/js/points.js?v=2"></script>
+    <script src="/static/js/results.js?v=2"></script>
+    <script src="/static/js/notifications.js?v=2"></script>
+    <script src="/static/js/users.js?v=2"></script>
 </body>
 </html>

@@ -1,199 +1,121 @@
-const API_URL = '/todos';
-let currentFilter = 'all';
-let todos = [];
+const API_BASE = '';
+let currentUser = null;
 
-// Загрузка задач при старте
-document.addEventListener('DOMContentLoaded', loadTodos);
+function getToken() { return localStorage.getItem('token'); }
+function setToken(t) { localStorage.setItem('token', t); }
+function removeToken() { localStorage.removeItem('token'); }
+function setUser(u) { currentUser = u; localStorage.setItem('user', JSON.stringify(u)); }
+function getUser() { const u = localStorage.getItem('user'); return u ? JSON.parse(u) : null; }
+function removeUser() { currentUser = null; localStorage.removeItem('user'); }
 
-// Обработчик формы добавления
-document.getElementById('todoForm').addEventListener('submit', async (e) => {
+async function api(path, opts = {}) {
+  const url = API_BASE + path;
+  const headers = { 'Content-Type': 'application/json', ...opts.headers };
+  const token = getToken();
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(url, { ...opts, headers });
+  if (res.status === 401) {
+    removeToken(); removeUser(); location.hash = '#login'; return null;
+  }
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Ошибка ' + res.status);
+  return data;
+}
+
+function formatDate(d) {
+  if (!d) return '—';
+  const date = new Date(d);
+  return date.toLocaleDateString('ru-RU');
+}
+
+function isOverdue(dateStr) {
+  if (!dateStr) return false;
+  return new Date(dateStr) < new Date(new Date().setHours(0,0,0,0));
+}
+
+const app = document.getElementById('app');
+const nav = document.getElementById('mainNav');
+
+function showNav() {
+  nav.classList.remove('hidden');
+  const role = currentUser?.role;
+  document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', role !== 'admin'));
+  document.querySelectorAll('.teacher-only').forEach(el => el.classList.toggle('hidden', role !== 'teacher' && role !== 'admin'));
+  updateNotifBadge();
+}
+function hideNav() { nav.classList.add('hidden'); }
+
+function route() {
+  const hash = location.hash.replace('#', '') || 'dashboard';
+  const parts = hash.split('/');
+  const page = parts[0];
+  const id = parts[1];
+  const subPage = parts[2];
+  const subId = parts[3];
+
+  if (!getToken() && page !== 'login' && page !== 'register') {
+    location.hash = '#login';
+    return;
+  }
+  if (getToken() && (page === 'login' || page === 'register')) {
+    location.hash = '#dashboard';
+    return;
+  }
+
+  currentUser = getUser();
+  if (getToken()) showNav(); else hideNav();
+
+  app.innerHTML = '<div class="loading">Загрузка...</div>';
+  try {
+    if (page === 'thesis' && id && subPage === 'point' && subId) {
+      renderPointDetail(parseInt(id), parseInt(subId));
+    } else if (page === 'login') {
+      renderLogin();
+    } else if (page === 'register') {
+      renderRegister();
+    } else if (page === 'dashboard') {
+      renderDashboard();
+    } else if (page === 'theses') {
+      renderTheses();
+    } else if (page === 'thesis') {
+      renderThesisDetail(parseInt(id));
+    } else if (page === 'groups') {
+      renderGroups();
+    } else if (page === 'group') {
+      renderGroupDetail(parseInt(id));
+    } else if (page === 'users') {
+      renderUsers();
+    } else if (page === 'notifications') {
+      renderNotifications();
+    } else if (page === 'profile') {
+      renderProfile();
+    } else {
+      renderDashboard();
+    }
+  } catch (e) {
+    app.innerHTML = '<div class="card">Ошибка загрузки страницы</div>';
+    console.error(e);
+  }
+}
+
+window.addEventListener('hashchange', route);
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('logoutBtn').addEventListener('click', (e) => {
     e.preventDefault();
-    
-    const title = document.getElementById('title').value.trim();
-    const description = document.getElementById('description').value.trim();
-    
-    if (!title) return;
-    
-    try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, description })
-        });
-        
-        if (response.ok) {
-            document.getElementById('title').value = '';
-            document.getElementById('description').value = '';
-            loadTodos();
-        }
-    } catch (error) {
-        console.error('Error creating todo:', error);
-    }
+    removeToken(); removeUser(); location.hash = '#login';
+  });
+  route();
 });
 
-// Обработчики фильтров
-document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentFilter = btn.dataset.filter;
-        renderTodos();
-    });
-});
-
-// Модальное окно
-const modal = document.getElementById('editModal');
-const closeBtn = document.querySelector('.close');
-
-closeBtn.addEventListener('click', () => modal.classList.remove('show'));
-modal.addEventListener('click', (e) => {
-    if (e.target === modal) modal.classList.remove('show');
-});
-
-// Обработчик формы редактирования
-document.getElementById('editForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const id = parseInt(document.getElementById('editId').value);
-    const title = document.getElementById('editTitle').value.trim();
-    const description = document.getElementById('editDescription').value.trim();
-    const completed = document.getElementById('editCompleted').checked;
-    
-    try {
-        const response = await fetch(`${API_URL}/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, description, completed })
-        });
-        
-        if (response.ok) {
-            modal.classList.remove('show');
-            loadTodos();
-        }
-    } catch (error) {
-        console.error('Error updating todo:', error);
-    }
-});
-
-// Загрузка задач с сервера
-async function loadTodos() {
-    const todoList = document.getElementById('todoList');
-    todoList.innerHTML = '<div class="loading">Загрузка...</div>';
-    
-    try {
-        const response = await fetch(API_URL);
-        todos = await response.json();
-        renderTodos();
-    } catch (error) {
-        console.error('Error loading todos:', error);
-        todoList.innerHTML = '<div class="empty-state"><span>⚠️</span>Ошибка загрузки</div>';
-    }
+function updateNotifBadge() {
+  const badge = document.getElementById('notifBadge');
+  if (!badge || !currentUser) return;
+  api('/api/notifications/unread').then(list => {
+    const count = list?.length || 0;
+    badge.textContent = count;
+    badge.classList.toggle('hidden', count === 0);
+  }).catch(() => {});
 }
 
-// Отображение задач
-function renderTodos() {
-    const todoList = document.getElementById('todoList');
-    
-    let filteredTodos = todos;
-    if (currentFilter === 'pending') {
-        filteredTodos = todos.filter(t => !t.completed);
-    } else if (currentFilter === 'completed') {
-        filteredTodos = todos.filter(t => t.completed);
-    }
-    
-    if (filteredTodos.length === 0) {
-        todoList.innerHTML = `
-            <div class="empty-state">
-                <span>📝</span>
-                ${currentFilter === 'all' ? 'Нет задач. Добавьте первую!' : 'Нет задач в этой категории'}
-            </div>
-        `;
-        updateStats(0, 0, 0);
-        return;
-    }
-    
-    todoList.innerHTML = filteredTodos.map(todo => `
-        <div class="todo-item ${todo.completed ? 'completed' : ''}">
-            <input 
-                type="checkbox" 
-                class="todo-checkbox" 
-                ${todo.completed ? 'checked' : ''}
-                onchange="toggleComplete(${todo.id}, this.checked)"
-            >
-            <div class="todo-content">
-                <div class="todo-title">${escapeHtml(todo.title)}</div>
-                ${todo.description ? `<div class="todo-description">${escapeHtml(todo.description)}</div>` : ''}
-            </div>
-            <div class="todo-actions">
-                <button class="edit-btn" onclick="openEditModal(${todo.id})">✏️</button>
-                <button class="delete-btn" onclick="deleteTodo(${todo.id})">🗑️</button>
-            </div>
-        </div>
-    `).join('');
-    
-    // Обновление статистики
-    const total = todos.length;
-    const completed = todos.filter(t => t.completed).length;
-    const pending = total - completed;
-    updateStats(total, completed, pending);
-}
 
-// Обновление статистики
-function updateStats(total, completed, pending) {
-    document.getElementById('totalCount').textContent = total;
-    document.getElementById('completedCount').textContent = completed;
-    document.getElementById('pendingCount').textContent = pending;
-}
-
-// Переключение статуса задачи
-async function toggleComplete(id, completed) {
-    const todo = todos.find(t => t.id === id);
-    if (!todo) return;
-    
-    try {
-        await fetch(`${API_URL}/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                title: todo.title, 
-                description: todo.description, 
-                completed 
-            })
-        });
-        loadTodos();
-    } catch (error) {
-        console.error('Error toggling todo:', error);
-    }
-}
-
-// Открытие модального окна редактирования
-function openEditModal(id) {
-    const todo = todos.find(t => t.id === id);
-    if (!todo) return;
-    
-    document.getElementById('editId').value = todo.id;
-    document.getElementById('editTitle').value = todo.title;
-    document.getElementById('editDescription').value = todo.description || '';
-    document.getElementById('editCompleted').checked = todo.completed;
-    
-    modal.classList.add('show');
-}
-
-// Удаление задачи
-async function deleteTodo(id) {
-    if (!confirm('Вы уверены, что хотите удалить эту задачу?')) return;
-    
-    try {
-        await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
-        loadTodos();
-    } catch (error) {
-        console.error('Error deleting todo:', error);
-    }
-}
-
-// Экранирование HTML
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
