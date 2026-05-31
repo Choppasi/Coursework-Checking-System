@@ -1,0 +1,21 @@
+# Бинарники
+/thesis-app
+*.exe
+
+# Окружение с секретами
+.env
+
+# Загруженные файлы пользователей
+/uploads/
+
+# Системный мусор
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Кэш Go
+*.test
+*.out
