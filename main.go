@@ -1,50 +1,182 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 
-	"todo-app/config"
-	"todo-app/internal/handlers"
-	"todo-app/internal/repository"
+	"thesis-app/config"
+	"thesis-app/internal/handlers"
+	"thesis-app/internal/middleware"
+	"thesis-app/internal/models"
+	"thesis-app/internal/repository"
+	"thesis-app/internal/services"
 
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	// Загружаем настройки
+	_ = godotenv.Load()
+
 	cfg := config.Load()
 
-	// Подключаемся к БД (сама создастся если нет)
 	db, err := config.InitDB(cfg)
 	if err != nil {
 		log.Fatalf("Ошибка подключения к базе: %v", err)
 	}
 	defer db.Close()
 
-	// Создаём обработчики
-	todoRepo := repository.NewTodoRepository(db)
-	todoHandler := handlers.NewTodoHandler(todoRepo)
+	_ = os.MkdirAll("./uploads", 0755)
 
-	// Настраиваем маршруты
+	// Репозитории
+	userRepo := repository.NewUserRepository(db)
+	groupRepo := repository.NewGroupRepository(db)
+	thesisRepo := repository.NewThesisRepository(db)
+	pointRepo := repository.NewPointRepository(db)
+	resultRepo := repository.NewResultRepository(db)
+	notifRepo := repository.NewNotificationRepository(db)
+
+	// Сервисы
+	notifService := services.NewNotificationService(notifRepo)
+	fileService := services.NewFileService("./uploads")
+
+	// Хендлеры
+	authHandler := handlers.NewAuthHandler(cfg, userRepo)
+	groupHandler := handlers.NewGroupHandler(groupRepo)
+	thesisHandler := handlers.NewThesisHandler(thesisRepo)
+	pointHandler := handlers.NewPointHandler(pointRepo, thesisRepo, notifService)
+	resultHandler := handlers.NewResultHandler(resultRepo, pointRepo, thesisRepo, notifService, fileService)
+	notifHandler := handlers.NewNotificationHandler(notifRepo)
+
+	// Проверяем JWT secret
+	if cfg.JWTSecret == "" {
+		log.Fatal("JWT_SECRET не задан! Установите переменную окружения JWT_SECRET")
+	}
+
+	// Middleware
+	authMW := middleware.AuthMiddleware(cfg)
+	requireAdmin := middleware.RequireRole("admin")
+	requireTeacher := middleware.RequireRole("teacher", "admin")
+	requireStudent := middleware.RequireRole("student", "teacher", "admin")
+
 	router := mux.NewRouter()
 
-	// CSS и JS файлы
+	// Статика (публичная)
 	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 
-	// Главная страница
+	// Загруженные файлы — только для авторизованных
+	uploads := router.PathPrefix("/uploads/").Subrouter()
+	uploads.Use(authMW)
+	uploads.PathPrefix("/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
+
+	// Главная
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "./static/index.html")
 	})
 
-	// Простые эндпоинты для проверки
-	router.HandleFunc("/health", handlers.HealthCheck).Methods(http.MethodGet)
-	router.HandleFunc("/ping", handlers.Ping).Methods(http.MethodGet)
+	// Health
+	router.HandleFunc("/health", handlers.HealthCheck).Methods("GET")
 
-	// API для задач
-	todoHandler.RegisterRoutes(router)
+	// API публичное
+	authHandler.RegisterRoutes(router)
 
-	// Запускаем сервер
+	// API защищенное
+	api := router.PathPrefix("/api").Subrouter()
+	api.Use(authMW)
+
+	// Группы
+	api.HandleFunc("/groups", groupHandler.GetAll).Methods("GET")
+	api.Handle("/groups", requireAdmin(http.HandlerFunc(groupHandler.Create))).Methods("POST")
+	api.HandleFunc("/groups/{id}", groupHandler.GetByID).Methods("GET")
+	api.Handle("/groups/{id}", requireAdmin(http.HandlerFunc(groupHandler.Update))).Methods("PUT")
+	api.Handle("/groups/{id}", requireAdmin(http.HandlerFunc(groupHandler.Delete))).Methods("DELETE")
+	api.Handle("/groups/{id}/members", requireTeacher(http.HandlerFunc(groupHandler.AddMember))).Methods("POST")
+	api.Handle("/groups/{id}/members/{studentId}", requireTeacher(http.HandlerFunc(groupHandler.RemoveMember))).Methods("DELETE")
+	api.Handle("/groups/my", requireStudent(http.HandlerFunc(groupHandler.GetMyGroup))).Methods("GET")
+
+	// Курсовые
+	thesisHandler.RegisterRoutes(api)
+
+	// Пункты
+	pointHandler.RegisterRoutes(api)
+
+	// Результаты
+	resultHandler.RegisterRoutes(api)
+
+	// Уведомления
+	notifHandler.RegisterRoutes(api)
+
+	// Дополнительно: список пользователей для админов и преподавателей
+	api.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
+		role := middleware.GetUserRole(r)
+		if role != "admin" && role != "teacher" {
+			http.Error(w, `{"error":"Forbidden"}`, http.StatusForbidden)
+			return
+		}
+		users, err := userRepo.GetAll()
+		if err != nil {
+			http.Error(w, `{"error":"Database error"}`, http.StatusInternalServerError)
+			return
+		}
+		if users == nil {
+			users = []models.User{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(users)
+	}).Methods("GET")
+
+	api.HandleFunc("/users/teachers", func(w http.ResponseWriter, r *http.Request) {
+		users, err := userRepo.GetByRole("teacher")
+		if err != nil {
+			http.Error(w, `{"error":"Database error"}`, http.StatusInternalServerError)
+			return
+		}
+		if users == nil {
+			users = []models.User{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(users)
+	}).Methods("GET")
+
+	api.HandleFunc("/users/students", func(w http.ResponseWriter, r *http.Request) {
+		role := middleware.GetUserRole(r)
+		if role != "admin" && role != "teacher" {
+			http.Error(w, `{"error":"Forbidden"}`, http.StatusForbidden)
+			return
+		}
+		users, err := userRepo.GetByRole("student")
+		if err != nil {
+			http.Error(w, `{"error":"Database error"}`, http.StatusInternalServerError)
+			return
+		}
+		if users == nil {
+			users = []models.User{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(users)
+	}).Methods("GET")
+
+	api.HandleFunc("/users/{id}", func(w http.ResponseWriter, r *http.Request) {
+		role := middleware.GetUserRole(r)
+		if role != "admin" {
+			http.Error(w, `{"error":"Forbidden"}`, http.StatusForbidden)
+			return
+		}
+		id, _ := strconv.Atoi(mux.Vars(r)["id"])
+		if id == middleware.GetUserID(r) {
+			http.Error(w, `{"error":"Cannot delete yourself"}`, http.StatusBadRequest)
+			return
+		}
+		if err := userRepo.Delete(id); err != nil {
+			http.Error(w, `{"error":"Could not delete user"}`, http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}).Methods("DELETE")
+
 	addr := ":" + cfg.ServerPort
 	log.Printf("Сервер запущен: http://localhost:%s", cfg.ServerPort)
 	if err := http.ListenAndServe(addr, router); err != nil {

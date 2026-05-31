@@ -4,6 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 
 	_ "github.com/lib/pq"
 )
@@ -20,7 +24,6 @@ func InitDB(cfg *Config) (*sql.DB, error) {
 		return nil, fmt.Errorf("не могу подключиться к postgres: %w", err)
 	}
 
-	// Проверяем, есть ли наша база данных
 	var exists bool
 	err = dbDefault.QueryRow("SELECT EXISTS(SELECT datname FROM pg_catalog.pg_database WHERE datname = $1)", cfg.DBName).Scan(&exists)
 	if err != nil {
@@ -28,7 +31,6 @@ func InitDB(cfg *Config) (*sql.DB, error) {
 		return nil, fmt.Errorf("не могу проверить базу: %w", err)
 	}
 
-	// Создаём базу, если её нет
 	if !exists {
 		_, err = dbDefault.Exec(fmt.Sprintf("CREATE DATABASE %s", cfg.DBName))
 		if err != nil {
@@ -39,7 +41,6 @@ func InitDB(cfg *Config) (*sql.DB, error) {
 	}
 	dbDefault.Close()
 
-	// Подключаемся к нашей базе
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName,
@@ -54,21 +55,40 @@ func InitDB(cfg *Config) (*sql.DB, error) {
 		return nil, fmt.Errorf("не могу пингануть базу: %w", err)
 	}
 
-	// Создаём таблицу задач
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS todos (
-			id SERIAL PRIMARY KEY,
-			title VARCHAR(255) NOT NULL,
-			description TEXT,
-			completed BOOLEAN DEFAULT FALSE,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("не могу создать таблицу: %w", err)
+	if err := runMigrations(db); err != nil {
+		return nil, fmt.Errorf("ошибка миграций: %w", err)
 	}
 
 	log.Println("База данных готова!")
 	return db, nil
+}
+
+func runMigrations(db *sql.DB) error {
+	files, err := os.ReadDir("migrations")
+	if err != nil {
+		return fmt.Errorf("не могу прочитать папку миграций: %w", err)
+	}
+
+	var sqlFiles []string
+	for _, f := range files {
+		if !f.IsDir() && strings.HasSuffix(f.Name(), ".sql") {
+			sqlFiles = append(sqlFiles, f.Name())
+		}
+	}
+	sort.Strings(sqlFiles)
+
+	for _, name := range sqlFiles {
+		path := filepath.Join("migrations", name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("не могу прочитать %s: %w", name, err)
+		}
+		_, err = db.Exec(string(data))
+		if err != nil {
+			return fmt.Errorf("ошибка выполнения %s: %w", name, err)
+		}
+		log.Printf("Миграция применена: %s", name)
+	}
+
+	return nil
 }
