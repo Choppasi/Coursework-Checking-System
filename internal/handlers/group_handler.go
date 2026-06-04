@@ -149,6 +149,42 @@ func (h *GroupHandler) GetMyGroup(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(group)
 }
 
+func (h *GroupHandler) JoinGroup(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r)
+	role := middleware.GetUserRole(r)
+
+	// Только студенты могут записываться в группы
+	if role != "student" {
+		http.Error(w, `{"error":"Only students can join groups"}`, http.StatusForbidden)
+		return
+	}
+
+	groupID, _ := strconv.Atoi(mux.Vars(r)["id"])
+
+	// Проверяем, существует ли группа
+	group, err := h.repo.GetByID(groupID)
+	if err != nil || group == nil {
+		http.Error(w, `{"error":"Group not found"}`, http.StatusNotFound)
+		return
+	}
+
+	// Проверяем, не состоит ли студент уже в группе
+	existing, _ := h.repo.GetStudentGroup(userID)
+	if existing != nil {
+		http.Error(w, `{"error":"You are already in a group"}`, http.StatusBadRequest)
+		return
+	}
+
+	if err := h.repo.AddMember(groupID, userID); err != nil {
+		http.Error(w, `{"error":"Could not join group"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Successfully joined group"})
+}
+
 func (h *GroupHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/api/groups", h.GetAll).Methods("GET")
 	router.HandleFunc("/api/groups", h.Create).Methods("POST")
@@ -158,4 +194,5 @@ func (h *GroupHandler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/api/groups/{id}/members", h.AddMember).Methods("POST")
 	router.HandleFunc("/api/groups/{id}/members/{studentId}", h.RemoveMember).Methods("DELETE")
 	router.HandleFunc("/api/groups/my", h.GetMyGroup).Methods("GET")
+	router.HandleFunc("/api/groups/{id}/join", h.JoinGroup).Methods("POST")
 }

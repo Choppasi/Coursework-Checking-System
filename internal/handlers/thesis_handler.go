@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"thesis-app/internal/middleware"
@@ -84,27 +86,53 @@ func (h *ThesisHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"Invalid request"}`, http.StatusBadRequest)
 		return
 	}
-	t := &models.Thesis{
-		StudentID:   req.StudentID,
-		Title:       req.Title,
-		Description: req.Description,
-		Status:      "planning",
-		StartDate:   &req.StartDate,
-		Deadline:    &req.Deadline,
+
+	var result interface{}
+
+	// Если передан group_id, создаём курсовые для всех студентов группы
+	if req.GroupID != nil && *req.GroupID > 0 {
+		ids, err := h.repo.CreateForGroup(
+			*req.GroupID,
+			req.Title,
+			req.Description,
+			"planning",
+			req.StartDate,
+			req.Deadline,
+		)
+		if err != nil {
+			log.Printf("Error creating thesis for group: %v", err)
+			http.Error(w, `{"error":"Could not create thesis for group"}`, http.StatusInternalServerError)
+			return
+		}
+		result = map[string]interface{}{
+			"message":    fmt.Sprintf("Created %d thesis(es) for group", len(ids)),
+			"thesis_ids": ids,
+		}
+	} else {
+		t := &models.Thesis{
+			StudentID:   req.StudentID,
+			Title:       req.Title,
+			Description: req.Description,
+			Status:      "planning",
+			StartDate:   &req.StartDate,
+			Deadline:    &req.Deadline,
+		}
+		if req.StartDate == "" {
+			t.StartDate = nil
+		}
+		if req.Deadline == "" {
+			t.Deadline = nil
+		}
+		if err := h.repo.Create(t); err != nil {
+			http.Error(w, `{"error":"Could not create thesis"}`, http.StatusInternalServerError)
+			return
+		}
+		result = t
 	}
-	if req.StartDate == "" {
-		t.StartDate = nil
-	}
-	if req.Deadline == "" {
-		t.Deadline = nil
-	}
-	if err := h.repo.Create(t); err != nil {
-		http.Error(w, `{"error":"Could not create thesis"}`, http.StatusInternalServerError)
-		return
-	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(t)
+	json.NewEncoder(w).Encode(result)
 }
 
 func (h *ThesisHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -164,9 +192,9 @@ func (h *ThesisHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ThesisHandler) RegisterRoutes(router *mux.Router) {
-	router.HandleFunc("/api/theses", h.GetAll).Methods("GET")
-	router.HandleFunc("/api/theses", h.Create).Methods("POST")
-	router.HandleFunc("/api/theses/{id}", h.GetByID).Methods("GET")
-	router.HandleFunc("/api/theses/{id}", h.Update).Methods("PUT")
-	router.HandleFunc("/api/theses/{id}", h.Delete).Methods("DELETE")
+	router.HandleFunc("/theses", h.GetAll).Methods("GET")
+	router.HandleFunc("/theses", h.Create).Methods("POST")
+	router.HandleFunc("/theses/{id}", h.GetByID).Methods("GET")
+	router.HandleFunc("/theses/{id}", h.Update).Methods("PUT")
+	router.HandleFunc("/theses/{id}", h.Delete).Methods("DELETE")
 }
