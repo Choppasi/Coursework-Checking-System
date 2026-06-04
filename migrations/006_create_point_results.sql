@@ -1,4 +1,4 @@
-z yCREATE TABLE IF NOT EXISTS point_results (
+CREATE TABLE IF NOT EXISTS point_results (
     id SERIAL PRIMARY KEY,
     point_id INT REFERENCES thesis_points(id) ON DELETE CASCADE,
     student_id INT REFERENCES users(id),
