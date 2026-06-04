@@ -5,6 +5,7 @@ import "time"
 type Thesis struct {
 	ID          int       `json:"id"`
 	StudentID   int       `json:"student_id"`
+	GroupID     *int      `json:"group_id,omitempty"`
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	Status      string    `json:"status"`
@@ -21,6 +22,7 @@ type ThesisWithStudent struct {
 
 type CreateThesisRequest struct {
 	StudentID   int    `json:"student_id"`
+	GroupID     *int   `json:"group_id,omitempty"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	StartDate   string `json:"start_date"`
