@@ -192,10 +192,10 @@ func (h *PointHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PointHandler) RegisterRoutes(router *mux.Router) {
-	router.HandleFunc("/api/theses/{id}/points", h.GetByThesis).Methods("GET")
-	router.HandleFunc("/api/theses/{id}/points", h.Create).Methods("POST")
-	router.HandleFunc("/api/points/{id}", h.GetByID).Methods("GET")
-	router.HandleFunc("/api/points/{id}", h.Update).Methods("PUT")
-	router.HandleFunc("/api/points/{id}", h.Delete).Methods("DELETE")
-	router.HandleFunc("/api/points/{id}/status", h.UpdateStatus).Methods("PUT")
+	router.HandleFunc("/theses/{id}/points", h.GetByThesis).Methods("GET")
+	router.HandleFunc("/theses/{id}/points", h.Create).Methods("POST")
+	router.HandleFunc("/points/{id}", h.GetByID).Methods("GET")
+	router.HandleFunc("/points/{id}", h.Update).Methods("PUT")
+	router.HandleFunc("/points/{id}", h.Delete).Methods("DELETE")
+	router.HandleFunc("/points/{id}/status", h.UpdateStatus).Methods("PUT")
 }

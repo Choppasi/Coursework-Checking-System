@@ -84,8 +84,8 @@ func (h *NotificationHandler) MarkAllRead(w http.ResponseWriter, r *http.Request
 }
 
 func (h *NotificationHandler) RegisterRoutes(router *mux.Router) {
-	router.HandleFunc("/api/notifications", h.GetAll).Methods("GET")
-	router.HandleFunc("/api/notifications/unread", h.GetUnread).Methods("GET")
-	router.HandleFunc("/api/notifications/{id}/read", h.MarkRead).Methods("PUT")
-	router.HandleFunc("/api/notifications/read-all", h.MarkAllRead).Methods("PUT")
+	router.HandleFunc("/notifications", h.GetAll).Methods("GET")
+	router.HandleFunc("/notifications/unread", h.GetUnread).Methods("GET")
+	router.HandleFunc("/notifications/{id}/read", h.MarkRead).Methods("PUT")
+	router.HandleFunc("/notifications/read-all", h.MarkAllRead).Methods("PUT")
 }

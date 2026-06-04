@@ -68,7 +68,7 @@ func (h *ResultHandler) GetByPoint(w http.ResponseWriter, r *http.Request) {
 	}
 	results, err := h.repo.GetByPoint(pointID)
 	if err != nil {
-		http.Error(w, `{"error":"Database error"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error":"Database error: `+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
 	if results == nil {
@@ -126,6 +126,11 @@ func (h *ResultHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Обновляем статус пункта на in_progress
 	h.pointRepo.UpdateStatus(pointID, "in_progress")
+
+	// Обновляем статус курсовой
+	if point, _ := h.pointRepo.GetByID(pointID); point != nil {
+		h.thesisRepo.UpdateStatusFromPoints(point.ThesisID)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -189,10 +194,16 @@ func (h *ResultHandler) Review(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Обновляем статус пункта
-	if req.ReviewStatus == "approved" {
+	switch req.ReviewStatus {
+	case "approved":
 		h.pointRepo.UpdateStatus(res.PointID, "done")
-	} else if req.ReviewStatus == "rejected" {
+	case "rejected":
 		h.pointRepo.UpdateStatus(res.PointID, "rejected")
+	}
+
+	// Обнова статуса
+	if point, _ := h.pointRepo.GetByID(res.PointID); point != nil {
+		h.thesisRepo.UpdateStatusFromPoints(point.ThesisID)
 	}
 
 	// Уведомляем студента
@@ -207,9 +218,9 @@ func (h *ResultHandler) Review(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ResultHandler) RegisterRoutes(router *mux.Router) {
-	router.HandleFunc("/api/points/{id}/results", h.GetByPoint).Methods("GET")
-	router.HandleFunc("/api/points/{id}/results", h.Create).Methods("POST")
-	router.HandleFunc("/api/results/{id}", h.GetByID).Methods("GET")
-	router.HandleFunc("/api/results/{id}", h.Update).Methods("PUT")
-	router.HandleFunc("/api/results/{id}/review", h.Review).Methods("PUT")
+	router.HandleFunc("/points/{id}/results", h.GetByPoint).Methods("GET")
+	router.HandleFunc("/points/{id}/results", h.Create).Methods("POST")
+	router.HandleFunc("/results/{id}", h.GetByID).Methods("GET")
+	router.HandleFunc("/results/{id}", h.Update).Methods("PUT")
+	router.HandleFunc("/results/{id}/review", h.Review).Methods("PUT")
 }
