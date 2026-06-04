@@ -73,12 +73,17 @@ async function renderGroupDetail(id) {
   const allStudents = await api('/api/users/students').catch(() => []);
   const isAdmin = getUser()?.role === 'admin';
   const isTeacher = getUser()?.role === 'teacher';
+  const isStudent = getUser()?.role === 'student';
+  const currentUser = getUser();
+  const isMember = members.some(m => m.id === currentUser?.id);
 
   app.innerHTML = `
     <h1 class="page-title">${escapeHtml(group.name)}</h1>
     <div class="card">
       <p>Курс: ${group.course} | Год поступления: ${group.year}</p>
       <p>Преподаватель: ${escapeHtml(group.teacher_name || '—')}</p>
+      ${isStudent && !isMember ? `<button class="btn btn-success" onclick="joinGroup(${group.id})">Записаться в группу</button>` : ''}
+      ${isMember ? `<span class="status status-completed">Вы состоите в этой группе</span>` : ''}
     </div>
 
     <div class="card">
@@ -91,7 +96,7 @@ async function renderGroupDetail(id) {
           <tr><th>ФИО</th><th>Email</th>${(isAdmin || isTeacher) ? '<th></th>' : ''}</tr>
           ${members.map(m => `
             <tr>
-              <td>${escapeHtml(m.full_name)}</td>
+              <td>${escapeHtml(m.full_name)}${m.id === currentUser?.id ? ' (вы)' : ''}</td>
               <td>${escapeHtml(m.email)}</td>
               ${(isAdmin || isTeacher) ? `<td><button class="btn btn-danger btn-sm" onclick="removeMember(${group.id},${m.id})">Исключить</button></td>` : ''}
             </tr>
@@ -103,6 +108,18 @@ async function renderGroupDetail(id) {
 
     <div id="memberModal"></div>
   `;
+
+  window.joinGroup = async (groupId) => {
+    if (!confirm('Записаться в эту группу?')) return;
+    try {
+      await api('/api/groups/' + groupId + '/join', { method: 'POST' });
+      alert('Вы успешно записались в группу!');
+      renderGroupDetail(id);
+    } catch (err) {
+      const res = await err.json().catch(() => ({}));
+      alert(res.error || 'Ошибка при записи в группу');
+    }
+  };
 
   window.showAddMember = () => {
     const available = allStudents.filter(s => !members.find(m => m.id === s.id));

@@ -3,17 +3,19 @@ async function renderTheses() {
   const isAdmin = getUser()?.role === 'admin';
   const isTeacher = getUser()?.role === 'teacher';
   const students = (isAdmin || isTeacher) ? await api('/api/users/students').catch(() => []) : [];
+  const groups = (isAdmin || isTeacher) ? await api('/api/groups').catch(() => []) : [];
 
   app.innerHTML = `
     <h1 class="page-title">Курсовые работы</h1>
     ${(isAdmin || isTeacher) ? `<button class="btn btn-primary" onclick="showThesisModal()">+ Создать курсовую</button>` : ''}
     <div class="table-wrap" style="margin-top:1rem">
       <table>
-        <tr><th>Тема</th><th>Студент</th><th>Статус</th><th>Дедлайн</th></tr>
+        <tr><th>Тема</th><th>Студент</th><th>Группа</th><th>Статус</th><th>Дедлайн</th></tr>
         ${list.map(t => `
           <tr>
             <td><a href="#thesis/${t.id}">${escapeHtml(t.title)}</a></td>
             <td>${escapeHtml(t.student_name || '—')}</td>
+            <td>${t.group_id ? 'Группа #' + t.group_id : '—'}</td>
             <td><span class="status status-${t.status}">${statusLabel(t.status)}</span></td>
             <td>${formatDate(t.deadline)} ${isOverdue(t.deadline) && t.status !== 'completed' ? '<span class="overdue">!</span>' : ''}</td>
           </tr>
@@ -30,8 +32,20 @@ async function renderTheses() {
         <div class="modal-content">
           <div class="modal-header"><h3>Новая курсовая</h3><button class="modal-close" onclick="closeThesisModal()">&times;</button></div>
           <form id="thesisForm">
-            <div class="form-group"><label>Студент</label>
+            <div class="form-group">
+              <label>Тип создания</label>
+              <select id="thType" onchange="toggleThesisFields()">
+                <option value="student">Для одного студента</option>
+                <option value="group">Для всей группы</option>
+              </select>
+            </div>
+            <div class="form-group" id="thStudentGroup">
+              <label>Студент</label>
               <select id="thStudent">${students.map(s => `<option value="${s.id}">${escapeHtml(s.full_name)}</option>`).join('')}</select>
+            </div>
+            <div class="form-group" id="thGroupGroup" style="display:none">
+              <label>Группа</label>
+              <select id="thGroup">${groups.map(g => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('')}</select>
             </div>
             <div class="form-group"><label>Тема</label><input type="text" id="thTitle" required></div>
             <div class="form-group"><label>Описание</label><textarea id="thDesc" rows="3"></textarea></div>
@@ -43,17 +57,32 @@ async function renderTheses() {
           </form>
         </div>
       </div>`;
+    
+    window.toggleThesisFields = () => {
+      const type = document.getElementById('thType').value;
+      document.getElementById('thStudentGroup').style.display = type === 'student' ? 'block' : 'none';
+      document.getElementById('thGroupGroup').style.display = type === 'group' ? 'block' : 'none';
+    };
+    
     document.getElementById('thesisForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const type = document.getElementById('thType').value;
+      const payload = {
+        title: document.getElementById('thTitle').value,
+        description: document.getElementById('thDesc').value,
+        start_date: document.getElementById('thStart').value,
+        deadline: document.getElementById('thDeadline').value,
+      };
+      
+      if (type === 'student') {
+        payload.student_id = parseInt(document.getElementById('thStudent').value);
+      } else {
+        payload.group_id = parseInt(document.getElementById('thGroup').value);
+      }
+      
       await api('/api/theses', {
         method: 'POST',
-        body: JSON.stringify({
-          student_id: parseInt(document.getElementById('thStudent').value),
-          title: document.getElementById('thTitle').value,
-          description: document.getElementById('thDesc').value,
-          start_date: document.getElementById('thStart').value,
-          deadline: document.getElementById('thDeadline').value,
-        })
+        body: JSON.stringify(payload)
       });
       closeThesisModal(); renderTheses();
     });
