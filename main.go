@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -20,6 +21,17 @@ import (
 
 func main() {
 	_ = godotenv.Load()
+
+	// Настройка логирования в файл
+	logFile, err := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatalf("Не удалось открыть файл логов: %v", err)
+	}
+	defer logFile.Close()
+
+	// Пишем логи и в файл, и в консоль
+	mw := io.MultiWriter(os.Stdout, logFile)
+	log.SetOutput(mw)
 
 	cfg := config.Load()
 
@@ -58,7 +70,6 @@ func main() {
 
 	// Middleware
 	authMW := middleware.AuthMiddleware(cfg)
-	requireAdmin := middleware.RequireRole("admin")
 	requireTeacher := middleware.RequireRole("teacher", "admin")
 	requireStudent := middleware.RequireRole("student", "teacher", "admin")
 
@@ -89,13 +100,14 @@ func main() {
 
 	// Группы
 	api.HandleFunc("/groups", groupHandler.GetAll).Methods("GET")
-	api.Handle("/groups", requireAdmin(http.HandlerFunc(groupHandler.Create))).Methods("POST")
+	api.Handle("/groups", requireTeacher(http.HandlerFunc(groupHandler.Create))).Methods("POST")
 	api.HandleFunc("/groups/{id}", groupHandler.GetByID).Methods("GET")
-	api.Handle("/groups/{id}", requireAdmin(http.HandlerFunc(groupHandler.Update))).Methods("PUT")
-	api.Handle("/groups/{id}", requireAdmin(http.HandlerFunc(groupHandler.Delete))).Methods("DELETE")
+	api.Handle("/groups/{id}", requireTeacher(http.HandlerFunc(groupHandler.Update))).Methods("PUT")
+	api.Handle("/groups/{id}", requireTeacher(http.HandlerFunc(groupHandler.Delete))).Methods("DELETE")
 	api.Handle("/groups/{id}/members", requireTeacher(http.HandlerFunc(groupHandler.AddMember))).Methods("POST")
 	api.Handle("/groups/{id}/members/{studentId}", requireTeacher(http.HandlerFunc(groupHandler.RemoveMember))).Methods("DELETE")
 	api.Handle("/groups/my", requireStudent(http.HandlerFunc(groupHandler.GetMyGroup))).Methods("GET")
+	api.Handle("/groups/{id}/join", requireStudent(http.HandlerFunc(groupHandler.JoinGroup))).Methods("POST")
 
 	// Курсовые
 	thesisHandler.RegisterRoutes(api)
