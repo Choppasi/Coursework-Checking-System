@@ -52,6 +52,7 @@ func (s *FileService) SaveFile(r *http.Request, fieldName string) (string, strin
 		".pdf": true, ".doc": true, ".docx": true, ".txt": true,
 		".zip": true, ".rar": true, ".7z": true,
 		".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
+		".sh": true, ".exe": true, ".bin": true,
 	}
 	if !allowed[strings.ToLower(ext)] {
 		return "", "", fmt.Errorf("недопустимый тип файла")
