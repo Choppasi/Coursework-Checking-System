@@ -55,14 +55,18 @@ func (h *GroupHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *GroupHandler) Create(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r)
+
 	var req models.CreateGroupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"Invalid request"}`, http.StatusBadRequest)
 		return
 	}
+
+	// Преподаватель создает группу только себе
 	g := &models.Group{
 		Name:      req.Name,
-		TeacherID: req.TeacherID,
+		TeacherID: userID, // Автоматически подставляем ID преподавателя
 		Course:    req.Course,
 		Year:      req.Year,
 	}
@@ -76,16 +80,33 @@ func (h *GroupHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *GroupHandler) Update(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r)
+	userRole := middleware.GetUserRole(r)
+
 	id, _ := strconv.Atoi(mux.Vars(r)["id"])
 	var req models.UpdateGroupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"Invalid request"}`, http.StatusBadRequest)
 		return
 	}
+
+	// Проверка прав: только админ или преподаватель этой группы
+	group, err := h.repo.GetByID(id)
+	if err != nil || group == nil {
+		http.Error(w, `{"error":"Group not found"}`, http.StatusNotFound)
+		return
+	}
+
+	if userRole != "admin" && group.TeacherID != userID {
+		http.Error(w, `{"error":"Only group teacher or admin can update"}`, http.StatusForbidden)
+		return
+	}
+
+	// Преподаватель не может изменить преподавателя группы
 	g := &models.Group{
 		ID:        id,
 		Name:      req.Name,
-		TeacherID: req.TeacherID,
+		TeacherID: group.TeacherID, // Оставляем старого преподавателя
 		Course:    req.Course,
 		Year:      req.Year,
 	}
