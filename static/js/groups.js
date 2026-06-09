@@ -1,11 +1,14 @@
 async function renderGroups() {
   const groups = await api('/api/groups').catch(() => []);
   const teachers = await api('/api/users/teachers').catch(() => []);
-  const isAdmin = getUser()?.role === 'admin';
+  const user = getUser();
+  const isAdmin = user?.role === 'admin';
+  const isTeacher = user?.role === 'teacher';
+  const canCreate = isAdmin || isTeacher;
 
   app.innerHTML = `
     <h1 class="page-title">Группы</h1>
-    ${isAdmin ? `<button class="btn btn-primary" onclick="showGroupModal()">+ Создать группу</button>` : ''}
+    ${canCreate ? `<button class="btn btn-primary" onclick="showGroupModal()">+ Создать группу</button>` : ''}
     <div class="table-wrap" style="margin-top:1rem">
       <table>
         <tr><th>Название</th><th>Курс</th><th>Год</th><th>Преподаватель</th>${isAdmin ? '<th></th>' : ''}</tr>
@@ -26,15 +29,19 @@ async function renderGroups() {
   `;
 
   window.showGroupModal = () => {
+    const currentTeacherId = user?.id;
     document.getElementById('groupModal').innerHTML = `
       <div class="modal-overlay" onclick="if(event.target===this)closeGroupModal()">
         <div class="modal-content">
           <div class="modal-header"><h3>Новая группа</h3><button class="modal-close" onclick="closeGroupModal()">&times;</button></div>
           <form id="groupForm">
             <div class="form-group"><label>Название</label><input type="text" id="gName" required></div>
+            ${isAdmin ? `
             <div class="form-group"><label>Преподаватель</label>
               <select id="gTeacher">${teachers.map(t => `<option value="${t.id}">${escapeHtml(t.full_name)}</option>`).join('')}</select>
-            </div>
+            </div>` : `
+            <input type="hidden" id="gTeacher" value="${currentTeacherId}">
+            `}
             <div class="grid-2">
               <div class="form-group"><label>Курс</label><input type="number" id="gCourse" value="1" min="1" max="6"></div>
               <div class="form-group"><label>Год поступления</label><input type="number" id="gYear" value="2024"></div>
