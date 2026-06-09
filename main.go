@@ -104,8 +104,8 @@ func main() {
 	api.HandleFunc("/groups/{id}", groupHandler.GetByID).Methods("GET")
 	api.Handle("/groups/{id}", requireTeacher(http.HandlerFunc(groupHandler.Update))).Methods("PUT")
 	api.Handle("/groups/{id}", requireTeacher(http.HandlerFunc(groupHandler.Delete))).Methods("DELETE")
-	api.Handle("/groups/{id}/members", requireTeacher(http.HandlerFunc(groupHandler.AddMember))).Methods("POST")
-	api.Handle("/groups/{id}/members/{studentId}", requireTeacher(http.HandlerFunc(groupHandler.RemoveMember))).Methods("DELETE")
+	api.Handle("/groups/{id}/members", http.HandlerFunc(groupHandler.AddMember)).Methods("POST")
+	api.Handle("/groups/{id}/members/{studentId}", http.HandlerFunc(groupHandler.RemoveMember)).Methods("DELETE")
 	api.Handle("/groups/my", requireStudent(http.HandlerFunc(groupHandler.GetMyGroup))).Methods("GET")
 	api.Handle("/groups/{id}/join", requireStudent(http.HandlerFunc(groupHandler.JoinGroup))).Methods("POST")
 
