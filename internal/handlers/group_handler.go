@@ -107,6 +107,9 @@ func (h *GroupHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *GroupHandler) AddMember(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r)
+	userRole := middleware.GetUserRole(r)
+
 	groupID, _ := strconv.Atoi(mux.Vars(r)["id"])
 	var body struct {
 		StudentID int `json:"student_id"`
@@ -115,6 +118,21 @@ func (h *GroupHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"Invalid request"}`, http.StatusBadRequest)
 		return
 	}
+
+	// Проверка прав доступа: только админ или преподаватель группы
+	if userRole != "admin" {
+		// Проверяем, является ли пользователь преподавателем этой группы
+		group, err := h.repo.GetByID(groupID)
+		if err != nil || group == nil {
+			http.Error(w, `{"error":"Group not found"}`, http.StatusNotFound)
+			return
+		}
+		if group.TeacherID != userID {
+			http.Error(w, `{"error":"Only group teacher or admin can add members"}`, http.StatusForbidden)
+			return
+		}
+	}
+
 	if err := h.repo.AddMember(groupID, body.StudentID); err != nil {
 		http.Error(w, `{"error":"Could not add member"}`, http.StatusInternalServerError)
 		return
@@ -124,9 +142,26 @@ func (h *GroupHandler) AddMember(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r)
+	userRole := middleware.GetUserRole(r)
+
 	vars := mux.Vars(r)
 	groupID, _ := strconv.Atoi(vars["id"])
 	studentID, _ := strconv.Atoi(vars["studentId"])
+
+	// Проверка прав доступа: только админ или преподаватель группы
+	if userRole != "admin" {
+		group, err := h.repo.GetByID(groupID)
+		if err != nil || group == nil {
+			http.Error(w, `{"error":"Group not found"}`, http.StatusNotFound)
+			return
+		}
+		if group.TeacherID != userID {
+			http.Error(w, `{"error":"Only group teacher or admin can remove members"}`, http.StatusForbidden)
+			return
+		}
+	}
+
 	if err := h.repo.RemoveMember(groupID, studentID); err != nil {
 		http.Error(w, `{"error":"Could not remove member"}`, http.StatusInternalServerError)
 		return
